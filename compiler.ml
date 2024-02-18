@@ -107,6 +107,10 @@ module Reader : READER = struct
     let nt1 = caten nt_skip_star (caten nt nt_skip_star) in
     let nt1 = pack nt1 (fun (_, (e, _)) -> e) in
     nt1
+  and make_skipped_star_beta (nt : 'b parser) =
+      let nt1 = caten nt_skip_star (caten nt nt_skip_star) in
+      let nt1 = pack nt1 (fun (_, (e, _)) -> e) in
+      nt1
   and nt_digit str =
     let nt1 = range '0' '9' in
     let nt1 = pack nt1 (let delta = int_of_char '0' in
@@ -290,9 +294,9 @@ module Reader : READER = struct
     nt1 str
   and nt_symbol str =
     let nt1 = plus nt_symbol_char in
-    let nt1 = pack nt1 string_of_list in
-    let nt1 = pack nt1 (fun name -> ScmSymbol name) in
-    let nt1 = diff nt1 nt_number in
+    let nt1 = pack nt1 string_of_list in 
+    let nt1 = pack nt1 (fun name -> ScmSymbol name) in 
+    let nt1 = diff nt1 nt_number in 
     nt1 str
   and nt_string_part_simple str =
     let nt1 =
@@ -363,10 +367,25 @@ module Reader : READER = struct
                         ScmNil in
                     ScmPair(ScmSymbol "string-append", argl)) in
     nt1 str
-  and nt_vector str =
-    raise (X_not_yet_implemented "for hw 1")
   and nt_list str =
-    raise (X_not_yet_implemented "for hw 1")
+    let nt1 = (char '(') in
+    let nt2 = pack (make_skipped_star_beta (char ')')) (fun _ -> ScmNil) in
+    let nt3 = plus nt_sexpr in
+    let nt4 = pack (char ')') (fun _ -> ScmNil) in
+    let nt5 = pack (caten (char '.') (caten nt_sexpr (char ')'))) 
+                (fun (_,(sexpr, _)) -> sexpr) in
+    let nt4 = disj nt4 nt5 in
+    let nt3 = pack (caten nt3 nt4)
+                (fun (sexprs, sexp) ->
+                  List.fold_right
+                  (fun car cdr -> ScmPair(car, cdr))
+                  sexprs
+                  sexp) in
+    let nt2 = disj nt2 nt3 in
+    let nt1 = pack (caten nt1 nt2) (fun (_ ,sexpr) -> sexpr) in
+    nt1 str
+  (*and nt_vector str =
+      raise (X_not_yet_implemented "for hw 1")  *)
   and make_quoted_form nt_qf qf_name =
     let nt1 = caten nt_qf nt_sexpr in
     let nt1 = pack nt1
@@ -386,7 +405,9 @@ module Reader : READER = struct
   and nt_sexpr str = 
     let nt1 =
       disj_list [nt_void; nt_number; nt_boolean; nt_char; nt_symbol;
-                 nt_string; nt_vector; nt_list; nt_quoted_forms] in
+      nt_string;  nt_list; nt_quoted_forms] in
+(*      disj_list [nt_void; nt_number; nt_boolean; nt_char; nt_symbol;
+                 nt_string; nt_vector; nt_list; nt_quoted_forms] in *)
     let nt1 = make_skipped_star nt1 in
     nt1 str;;
 
