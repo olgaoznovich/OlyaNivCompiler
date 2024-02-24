@@ -384,8 +384,15 @@ module Reader : READER = struct
     let nt2 = disj nt2 nt3 in
     let nt1 = pack (caten nt1 nt2) (fun (_ ,sexpr) -> sexpr) in
     nt1 str
-  (*and nt_vector str =
-      raise (X_not_yet_implemented "for hw 1")  *)
+  and nt_vector str =
+    let nt1 = (char '#') in
+    let nt2 = (char '(') in
+    let nt3 = star nt_sexpr in (* return a function, when given str indx return a list of sexprs*)
+    let nt3 = pack (caten nt3 (char ')'))
+                  (fun (sexprs, _) -> ScmVector(sexprs)) in
+    let nt1 = pack (caten (caten nt1 nt2) nt3)
+                  (fun ((_, _), sexpr) -> sexpr) in
+    nt1 str
   and make_quoted_form nt_qf qf_name =
     let nt1 = caten nt_qf nt_sexpr in
     let nt1 = pack nt1
@@ -404,10 +411,10 @@ module Reader : READER = struct
     nt1 str
   and nt_sexpr str = 
     let nt1 =
-      disj_list [nt_void; nt_number; nt_boolean; nt_char; nt_symbol;
-      nt_string;  nt_list; nt_quoted_forms] in
-(*      disj_list [nt_void; nt_number; nt_boolean; nt_char; nt_symbol;
-                 nt_string; nt_vector; nt_list; nt_quoted_forms] in *)
+      (* disj_list [nt_void; nt_number; nt_boolean; nt_char; nt_symbol;
+      nt_string;  nt_list; nt_quoted_forms] in *)
+     disj_list [nt_void; nt_number; nt_boolean; nt_char; nt_symbol;
+                 nt_string; nt_vector; nt_list; nt_quoted_forms] in
     let nt1 = make_skipped_star nt1 in
     nt1 str;;
 
