@@ -583,12 +583,14 @@ module Tag_Parser : TAG_PARSER = struct
                 ScmPair (car, ScmPair (cdr, ScmNil)))
     | ScmPair (car, cdr) ->
       let cdr = macro_expand_qq cdr in
-      (match car with
-      | ScmPair (ScmPair (ScmSymbol "unqote-splicing",
+      (* (match car with
+      | ScmPair (ScmPair (ScmSymbol "unquote-splicing",
           ScmPair (sexpr, ScmNil)), ScmNil)  -> 
+            print_endline "hi";
         ScmPair (ScmSymbol "append", ScmPair (car, ScmPair (cdr, ScmNil)))  
-      | _ -> let car = macro_expand_qq car in
-        ScmPair (ScmSymbol "cons", ScmPair (car, ScmPair (cdr, ScmNil))))
+      | _ ->  *)
+        let car = macro_expand_qq car in
+        ScmPair (ScmSymbol "cons", ScmPair (car, ScmPair (cdr, ScmNil)))
 
     | ScmVector sexprs ->
        if (list_contains_unquote_splicing sexprs)
