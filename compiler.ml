@@ -653,6 +653,32 @@ module Tag_Parser : TAG_PARSER = struct
       | _ -> false
     in run;;
 
+  let rec macro_expand_letrec_ribs ribs = 
+    match ribs with
+    | ScmNil -> ScmNil 
+    | ScmPair(ScmPair(fi, ScmPair(expr, ScmNil)), ScmNil) ->
+      ScmPair(ScmPair(fi, ScmPair(ScmPair (ScmSymbol "quote", ScmPair (ScmSymbol("whatever"), ScmNil)), ScmNil)), ScmNil) 
+    | ScmPair(ScmPair(fi, ScmPair(expr, ScmNil)), ribs) ->
+      let rest = macro_expand_letrec_ribs ribs in
+      ScmPair(ScmPair(fi, ScmPair(ScmPair (ScmSymbol "quote", ScmPair (ScmSymbol("whatever"), ScmNil)), ScmNil)), rest)
+    | _ -> raise(X_syntax "malformed letrec-ribs");;
+      
+  let rec macro_expand_letrec_setbangs ribs bodyExprs = (* (letrec ((x 1)) (+ 2 3) 1) => (let ((x 'whatever)) (set! x 1) (let () (+ 2 3) 1)) *)
+    let orangeLet = ScmPair(ScmSymbol("let"), ScmPair(ScmNil, bodyExprs)) in
+    match ribs with 
+    | ScmNil -> ScmPair(orangeLet, ScmNil)
+    | ScmPair(ScmPair(fi, ScmPair(expr, ScmNil)), ScmNil) -> 
+      ScmPair(ScmPair(ScmSymbol("set!"), ScmPair(fi, ScmPair(expr, ScmNil))), ScmPair(orangeLet, ScmNil))
+    | ScmPair(ScmPair(fi, ScmPair(expr, ScmNil)), ribs) ->
+      let rest = macro_expand_letrec_setbangs ribs bodyExprs in
+      ScmPair(ScmPair(ScmSymbol("set!"), ScmPair(fi, ScmPair(expr, ScmNil))), rest)
+    | _ -> raise(X_syntax "malformed letrec-body!");;
+
+  let rec macro_expand_letrec ribs exprs = 
+    let lets = macro_expand_letrec_ribs ribs in (* comes in (), neccessary!*)
+    let setbangs = macro_expand_letrec_setbangs ribs exprs in (* comes in (), UNneccessaitryry!!!*)
+    ScmPair(ScmSymbol("let"), ScmPair(lets, setbangs));;
+
   let rec tag_parse sexpr =
     match sexpr with
     | ScmVoid | ScmBoolean _ | ScmChar _ | ScmString _ | ScmNumber _ ->
@@ -771,7 +797,7 @@ module Tag_Parser : TAG_PARSER = struct
                                               ScmPair (ribs, exprs)),
                                      ScmNil))))
     | ScmPair (ScmSymbol "letrec", ScmPair (ribs, exprs)) ->
-       raise (X_not_yet_implemented "hw 1")
+        tag_parse(macro_expand_letrec ribs exprs)
     | ScmPair (ScmSymbol "and", ScmNil) -> tag_parse (ScmBoolean true)
     | ScmPair (ScmSymbol "and", exprs) ->
        (match (scheme_list_to_ocaml exprs) with
