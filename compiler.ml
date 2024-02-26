@@ -615,32 +615,36 @@ module Tag_Parser : TAG_PARSER = struct
                                            ScmNil))));;
 
   let rec macro_expand_cond_ribs ribs = 
-    (* raise (X_not_yet_implemented "hw 1");; *)
     match ribs with
     | ScmPair(ScmPair(ScmSymbol("else"), exprs), ScmNil) ->
       ScmPair(ScmSymbol("begin"), exprs)
-      | ScmPair(ScmPair(expr, ScmPair(ScmSymbol("=>"), ScmPair(exprf, ScmNil))), ribs) ->
-        let rest = macro_expand_cond_ribs ribs in
-        let test = ScmSymbol("value") in
-        let dit = ScmPair(ScmPair(exprf, ScmNil), ScmSymbol("value")) in
-        let dif = ScmPair(ScmSymbol("rest"), ScmNil) in
-  
-        ScmPair(ScmSymbol("let"), 
-          ScmPair(
-            ScmPair(ScmPair(ScmSymbol("value"), expr), 
-              ScmPair(ScmPair(ScmSymbol("f"), ScmPair(ScmSymbol("lambda"), ScmPair(ScmNil, ScmPair(exprf, ScmNil)))),
-                ScmPair(ScmPair(ScmSymbol("rest"), ScmPair(ScmSymbol("lambda"), ScmPair(ScmNil, ScmPair(rest, ScmNil)))),
-              ScmNil))),
-            ScmPair(
-              ScmPair(ScmSymbol("if"),
-                 ScmPair(test, ScmPair(dit, ScmPair(dif, ScmNil)))),
-              ScmNil)))
+    | ScmPair(ScmPair(expr, ScmPair(ScmSymbol("=>"), ScmPair(exprf, ScmNil))), ribs) ->
+      let rest = macro_expand_cond_ribs ribs in
+      let test = ScmSymbol("value") in
+      let dit = ScmPair(ScmPair(exprf, ScmNil), ScmPair(ScmSymbol("value"), ScmNil)) in
+      let dif = ScmPair(ScmSymbol("rest"), ScmNil) in
+            
+      ScmPair(ScmSymbol("let"), 
+        ScmPair( (* list of: sets, body*)
+          ScmPair( (*sets*)
+            ScmPair(ScmSymbol("value"), ScmPair(expr, ScmNil)) (* fisrt*)
+            ,ScmPair(
+              ScmPair(ScmSymbol("f"), (*second*)
+                ScmPair(ScmPair(ScmSymbol("lambda"), ScmPair(ScmNil, ScmPair(exprf, ScmNil))), ScmNil))
+              ,ScmPair((*third*)
+                ScmPair(ScmSymbol("rest"), 
+                  ScmPair(ScmPair(ScmSymbol("lambda"), ScmPair(ScmNil, ScmPair(rest, ScmNil))), ScmNil))
+                ,ScmNil))),
+              ScmPair(
+                ScmPair(
+                  ScmSymbol("if"), ScmPair(test, ScmPair(dit, ScmPair(dif, ScmNil)))
+                )
+              ,ScmNil)))
     | ScmPair(ScmPair(test, exprs), ribs) ->
       let dit = ScmPair(ScmSymbol("begin"), exprs) in
       let dif = macro_expand_cond_ribs ribs in
       ScmPair(ScmSymbol("if"), ScmPair(test, ScmPair(dit, ScmPair(dif, ScmNil))))
-    
-        | _ -> raise(X_syntax "malformed cond-ribs");;
+    | _ -> raise(X_syntax "malformed cond-ribs");;
 
   let is_list_of_unique_names =
     let rec run = function
