@@ -663,12 +663,13 @@ module Tag_Parser : TAG_PARSER = struct
       ScmPair(ScmPair(fi, ScmPair(ScmPair (ScmSymbol "quote", ScmPair (ScmSymbol("whatever"), ScmNil)), ScmNil)), rest)
     | _ -> raise(X_syntax "malformed letrec-ribs");;
       
-  let rec macro_expand_letrec_setbangs ribs bodyExprs = (* (letrec ((x 1)) (+ 2 3) 1) => (let ((x 'whatever)) (set! x 1) (let () (+ 2 3) 1)) *)
-    let orangeLet = ScmPair(ScmSymbol("let"), ScmPair(ScmNil, bodyExprs)) in
+
+    
+  let rec macro_expand_letrec_setbangs ribs bodyExprs = 
     match ribs with 
-    | ScmNil -> ScmPair(orangeLet, ScmNil)
+    | ScmNil -> ScmNil
     | ScmPair(ScmPair(fi, ScmPair(expr, ScmNil)), ScmNil) -> 
-      ScmPair(ScmPair(ScmSymbol("set!"), ScmPair(fi, ScmPair(expr, ScmNil))), ScmPair(orangeLet, ScmNil))
+      ScmPair(ScmPair(ScmSymbol("set!"), ScmPair(fi, ScmPair(expr, ScmNil))), bodyExprs)
     | ScmPair(ScmPair(fi, ScmPair(expr, ScmNil)), ribs) ->
       let rest = macro_expand_letrec_setbangs ribs bodyExprs in
       ScmPair(ScmPair(ScmSymbol("set!"), ScmPair(fi, ScmPair(expr, ScmNil))), rest)
@@ -995,73 +996,63 @@ module Semantic_Analysis : SEMANTIC_ANALYSIS = struct
         | Some(major, minor) -> Var' (name, Bound (major, minor)))
     | Some minor -> Var' (name, Param minor);;
 
-  
-  (*
-  specific var: name="c", params=["c"], env=[["b"], ["a"]]
-  (lambda (a)
-    (lambda (b)
-      (lambda (c) 
-        42)))
+  let rec convert_to_lexical_types pe params env =
+    match pe with
+    | ScmConst(sexpr) -> ScmConst'(sexpr)
+    | ScmVarGet(Var(name)) -> 
+      ScmVarGet'(tag_lexical_address_for_var name params env)
+    | ScmIf(test, dit, dif) -> ScmIf'(convert_to_lexical_types test params env, 
+                                      convert_to_lexical_types dit params env,
+                                      convert_to_lexical_types dif params env)
+    | ScmSeq(exprs) -> ScmSeq'((List.map
+                                (fun expr -> convert_to_lexical_types expr params env)
+                                exprs))
+    | ScmOr(exprs) -> ScmOr'((List.map
+                              (fun expr -> convert_to_lexical_types expr params env)
+                              exprs))
+    | ScmVarSet(Var(name), expr) -> ScmVarSet'(tag_lexical_address_for_var name params env, convert_to_lexical_types expr params env)
+    | ScmVarDef(Var(name) , expr) -> ScmVarDef'(tag_lexical_address_for_var name params env, convert_to_lexical_types expr params env)
+    | ScmLambda(args, Simple, body) -> ScmLambda'(args, Simple,
+                                            convert_to_lexical_types body args (params :: env))
+    | ScmLambda(args, Opt(optArg), body) -> ScmLambda'(args, Opt(optArg),
+                                            convert_to_lexical_types body (args @ [optArg]) (params :: env))
 
-ScmLambda (["a"], Simple,
- ScmLambda (["b"], Simple,
-  ScmLambda (["c"], Simple, ScmConst (ScmNumber (ScmInteger 42)))))
-        *)
-(* 
-        | ScmConst' of sexpr
-        | ScmVarGet' of var'
-        | ScmIf' of expr' * expr' * expr'
-        | ScmSeq' of expr' list
-        | ScmOr' of expr' list
-        | ScmVarSet' of var' * expr'
-        | ScmVarDef' of var' * expr'
-        | ScmBox' of var'
-        | ScmBoxGet' of var'
-        | ScmBoxSet' of var' * expr'
-        | ScmLambda' of string list * lambda_kind * expr'
-        | ScmApplic' of expr' * expr' list * app_kind;;
-     *)
-     (* (define f (lambda (a) (lambda (b) (a b)))) *)
-      (* (lambda (a) (lambda (a) (lambda (c) c))) params=[c] env=[[b];[a]] *)
-      (* [[c];[b];[a]] => params :: env => params=[c], env=[[b];[a]] *)
-
-      (* (if #t (lambda (a) a) (lambda (a) (lambda (b) a))) *)
-
-        let rec convert_to_lexical_types pe params env =
-          match pe with
-          | ScmConst(sexpr) -> ScmConst'(sexpr)
-          | ScmVarGet(Var(name)) -> 
-            ScmVarGet'(tag_lexical_address_for_var name params env)
-          | ScmIf(test, dit, dif) -> ScmIf'(convert_to_lexical_types test params env, 
-                                            convert_to_lexical_types dit params env,
-                                            convert_to_lexical_types dif params env)
-          | ScmSeq(exprs) -> ScmSeq'((List.map
-                                      (fun expr -> convert_to_lexical_types expr params env)
-                                      exprs))
-          | ScmOr(exprs) -> ScmOr'((List.map
-                                    (fun expr -> convert_to_lexical_types expr params env)
-                                    exprs))
-          | ScmVarSet(Var(name), expr) -> ScmVarSet'(tag_lexical_address_for_var name params env, convert_to_lexical_types expr params env)
-          | ScmVarDef(Var(name) , expr) -> ScmVarDef'(tag_lexical_address_for_var name params env, convert_to_lexical_types expr params env)
-          | ScmLambda(args, Simple, body) -> ScmLambda'(args, Simple,
-                                                  convert_to_lexical_types body args (params :: env))
-          | ScmLambda(args, Opt(optArg), body) -> ScmLambda'(args, Opt(optArg),
-                                                  convert_to_lexical_types body (args @ [optArg]) (params :: env))
-
-          | ScmApplic(proc, args) -> ScmApplic'(convert_to_lexical_types proc params env,
-                                                  (List.map
-                                                  (fun arg -> convert_to_lexical_types arg params env)
-                                                  args), Non_Tail_Call);;
+    | ScmApplic(proc, args) -> ScmApplic'(convert_to_lexical_types proc params env,
+                                            (List.map
+                                            (fun arg -> convert_to_lexical_types arg params env)
+                                            args), Non_Tail_Call);;
   (* run this first *)
   let annotate_lexical_address pe =
-    
-
     convert_to_lexical_types pe [] [];;
     
+  let rec annotate_tail_calls_helper pe intp = 
+    match pe with
+      | ScmIf'(test, dit, dif) -> ScmIf'(test, 
+                                  annotate_tail_calls_helper dit intp,
+                                  annotate_tail_calls_helper dif intp)
+      | ScmSeq'(exprs) -> ScmSeq'(tc_list_handler exprs intp) 
+      | ScmOr'(exprs) -> ScmOr'(tc_list_handler exprs intp)
+      | ScmVarSet'(var, expr) -> ScmVarSet'(var, annotate_tail_calls_helper expr false)
+      | ScmVarDef'(var, expr) -> ScmVarDef'(var, annotate_tail_calls_helper expr intp)
+      | ScmLambda'(args, lambda_kind, body) ->
+        ScmLambda'(args, 
+                  lambda_kind,
+                  annotate_tail_calls_helper body true)
+      | ScmApplic'(proc, args, _) -> 
+        let app_kind = if (intp) then Tail_Call else Non_Tail_Call in
+          ScmApplic'(annotate_tail_calls_helper proc false,
+                    tc_list_handler args false,
+                    app_kind)
+      | _ -> pe
+    and tc_list_handler exprs intp = 
+      match exprs with
+      | expr :: [] -> [annotate_tail_calls_helper expr intp]
+      | expr :: rest -> [annotate_tail_calls_helper expr false] @ (tc_list_handler rest intp)
+      | _ -> raise(X_syntax "illegal lambda body");;
 
   (* run this second *)
   let annotate_tail_calls pe = 
-    raise (X_not_yet_implemented "hw 2");;
+    annotate_tail_calls_helper pe false;;
 
   (* auto_box *)
 
@@ -1257,10 +1248,10 @@ ScmLambda (["a"], Simple,
        ScmApplic' (auto_box proc, List.map auto_box args, app_kind);;
 
   let semantics expr =
-    (* auto_box
+    auto_box
       (annotate_tail_calls
-         (annotate_lexical_address expr));; *)
-         annotate_lexical_address expr;;
+         (annotate_lexical_address expr));;
+         (* annotate_lexical_address expr;; *)
 
 end;; (* end of module Semantic_Analysis *)
 
