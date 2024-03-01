@@ -675,6 +675,7 @@ module Tag_Parser : TAG_PARSER = struct
       ScmPair(ScmPair(ScmSymbol("set!"), ScmPair(fi, ScmPair(expr, ScmNil))), rest)
     | _ -> raise(X_syntax "malformed letrec-body!");;
 
+   
   let rec macro_expand_letrec ribs exprs = 
     let lets = macro_expand_letrec_ribs ribs in (* comes in (), neccessary!*)
     let setbangs = macro_expand_letrec_setbangs ribs exprs in (* comes in (), UNneccessaitryry!!!*)
@@ -1046,9 +1047,9 @@ module Semantic_Analysis : SEMANTIC_ANALYSIS = struct
       | _ -> pe
     and tc_list_handler exprs intp = 
       match exprs with
+      | [] -> []
       | expr :: [] -> [annotate_tail_calls_helper expr intp]
-      | expr :: rest -> [annotate_tail_calls_helper expr false] @ (tc_list_handler rest intp)
-      | _ -> raise(X_syntax "illegal lambda body");;
+      | expr :: rest -> [annotate_tail_calls_helper expr false] @ (tc_list_handler rest intp);;
 
   (* run this second *)
   let annotate_tail_calls pe = 
@@ -1681,8 +1682,30 @@ module Code_Generation : CODE_GENERATION = struct
     Printf.sprintf "%s:\n%s"
       label_start_of_constants_table (run table);;
 
+
   let collect_free_vars pe =
-    raise (X_not_yet_implemented "final project");;
+    (* raise (X_not_yet_implemented "final project");; *)
+    let rec collect_free_vars_helper pe  = 
+    match pe with
+    | ScmVarGet'(Var' (v, Free)) | ScmBox'(Var' (v, Free)) | ScmBoxGet'(Var' (v, Free))
+    -> [v] 
+    | ScmIf'(test, dit, dif) -> (collect_free_vars_helper test ) @ 
+                                (collect_free_vars_helper dit ) @
+                                (collect_free_vars_helper dif)
+    | ScmSeq'(exprs) ->  fv_list_handler exprs
+    | ScmOr'(exprs) -> fv_list_handler exprs
+    | ScmVarSet'(Var'(v, Free), expr) | ScmVarDef'(Var'(v, Free), expr) | ScmBoxSet'(Var'(v, Free), expr)
+    ->  [v] @ (collect_free_vars_helper expr) 
+    | ScmVarSet'(Var'(v, _), expr) | ScmVarDef'(Var'(v, _), expr) | ScmBoxSet'(Var'(v, _), expr)
+    -> collect_free_vars_helper expr 
+    | ScmLambda'(args, lambda_kind, body) -> collect_free_vars_helper body 
+    | ScmApplic'(proc, args, _) -> 
+        (collect_free_vars_helper proc ) @ (fv_list_handler args )    
+    | _ -> [];
+    and fv_list_handler exprs  =  
+      let mapped = List.map (fun expr -> collect_free_vars_helper expr ) exprs in
+      List.fold_right (fun subList acc-> subList @ acc)  mapped [];
+    in remove_duplicates (fv_list_handler pe);;
 
   let make_free_vars_table =
     let rec run index = function
@@ -1777,9 +1800,19 @@ module Code_Generation : CODE_GENERATION = struct
   let make_tc_applic_recycle_frame_done =
     make_make_label ".L_tc_recycle_frame_done";;
 
+(*DELETE THIS LATER - TESTING PURPOSES ONLY*)
+    let rec print_string_pairs lst =
+      match lst with
+      | [] -> ()  (* Base case: empty list, do nothing *)
+      | (first, second)::rest ->
+        Printf.printf "(%s, %s)\n" first second;
+        print_string_pairs rest;;
+
+        
   let code_gen exprs' =
     let consts = make_constants_table exprs' in
     let free_vars = make_free_vars_table exprs' in
+    print_string_pairs free_vars ; (*DELETE THIS LATER - TESTING PURPOSES ONLY*)
     let rec run params env = function
       | ScmConst' sexpr ->
          let addr = search_constant_address sexpr consts in
