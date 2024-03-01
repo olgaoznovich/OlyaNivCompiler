@@ -1682,9 +1682,7 @@ module Code_Generation : CODE_GENERATION = struct
     Printf.sprintf "%s:\n%s"
       label_start_of_constants_table (run table);;
 
-
   let collect_free_vars pe =
-    (* raise (X_not_yet_implemented "final project");; *)
     let rec collect_free_vars_helper pe  = 
     match pe with
     | ScmVarGet'(Var' (v, Free)) | ScmBox'(Var' (v, Free)) | ScmBoxGet'(Var' (v, Free))
@@ -1705,7 +1703,8 @@ module Code_Generation : CODE_GENERATION = struct
     and fv_list_handler exprs  =  
       let mapped = List.map (fun expr -> collect_free_vars_helper expr ) exprs in
       List.fold_right (fun subList acc-> subList @ acc)  mapped [];
-    in remove_duplicates (fv_list_handler pe);;
+    in let global_bindings = List.map (fun (str1, str2) -> str1) global_bindings_table 
+    in remove_duplicates ( global_bindings @ (fv_list_handler pe));;
 
   let make_free_vars_table =
     let rec run index = function
@@ -1833,7 +1832,18 @@ module Code_Generation : CODE_GENERATION = struct
          ^ (Printf.sprintf
               "\tmov rax, qword [rax + 8 * %d]\t; bound var %s\n" minor v)
       | ScmIf' (test, dit, dif) ->
-         raise (X_not_yet_implemented "final project")
+         (* raise (X_not_yet_implemented "final project") *)
+         let label_lelse = make_if_else () in
+         let label_lexit = make_if_end () in
+         
+         let asm_test = run params env test in
+         let asm_dit = run params env dit in
+         let asm_dif = run params env dif in
+         let asm_code = asm_test ^ "\n\tcmp rax, sob_false\n" ^ (Printf.sprintf "\tje %s\n" label_lelse)
+                      ^ asm_dit ^ (Printf.sprintf "\n\tjmp %s\n" label_lexit) 
+                      ^ (Printf.sprintf "\n\t%s:\n" label_lelse) ^ asm_dif 
+                      ^ (Printf.sprintf "\n\t%s:\n" label_lexit)
+      in asm_code
       | ScmSeq' exprs' ->
          String.concat "\n"
            (List.map (run params env) exprs')
@@ -1859,13 +1869,33 @@ module Code_Generation : CODE_GENERATION = struct
             | None -> run params env (ScmConst' (ScmBoolean false)))
          in asm_code
       | ScmVarSet' (Var' (v, Free), expr') ->
-         raise (X_not_yet_implemented "final project")
+        let label = search_free_var_table v free_vars in
+        let asm_expr = run params env expr' in
+        let asm_code = asm_expr
+                    ^ (Printf.sprintf
+                      "\tmov qword [%s], rax\t; free var %s\n"
+                      label v)
+                    ^ "\tcmp byte [rax], T_undefined\n"
+                    ^ "\tje L_error_fvar_undefined\n"
+                    ^ "\tmov rax, sov_void\n"
+        in asm_code
       | ScmVarSet' (Var' (v, Param minor), ScmBox' _) ->
          raise (X_not_yet_implemented "final project")
       | ScmVarSet' (Var' (v, Param minor), expr') ->
-         raise (X_not_yet_implemented "final project")
+        (* raise (X_not_yet_implemented "final project") *)
+        let asm_expr = run params env expr' in
+        let asm_code = asm_expr ^ 
+              (Printf.sprintf "\n\t mov PARAM(%d), rax ;param %s\nmov rax, sob_void\n" minor v)
+      in asm_code
       | ScmVarSet' (Var' (v, Bound (major, minor)), expr') ->
-         raise (X_not_yet_implemented "final project")
+         (* raise (X_not_yet_implemented "final project") *)
+        let asm_expr = run params env expr' in
+        let asm_code = asm_expr 
+                      ^ "\n\tmov rbx, ENV\n"
+                      ^ (Printf.sprintf "\tmov rbx, qword[rbx + 8 * %d]\n" major)
+                      ^ (Printf.sprintf "\tmov qword[rbx + 8 * %d], rax\n" minor)
+                      ^ "\tmov rax, sob_void\n"
+        in asm_code
       | ScmVarDef' (Var' (v, Free), expr') ->
          let label = search_free_var_table v free_vars in
          (run params env expr')
