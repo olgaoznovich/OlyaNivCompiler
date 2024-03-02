@@ -1877,10 +1877,14 @@ module Code_Generation : CODE_GENERATION = struct
                       label v)
                     ^ "\tcmp byte [rax], T_undefined\n"
                     ^ "\tje L_error_fvar_undefined\n"
-                    ^ "\tmov rax, sov_void\n"
+                    ^ "\tmov rax, sob_void\n"
         in asm_code
       | ScmVarSet' (Var' (v, Param minor), ScmBox' _) ->
-         raise (X_not_yet_implemented "final project")
+         (* raise (X_not_yet_implemented "final project") *)
+         ^ "\n\tcall malloc" (* malloc address is in rax*)
+         ^ (Printf.sprintf "\n\tmov [rax], PARAM(%d)\t; box %s" minor v)
+         ^ (Printf.sprintf "\n\tmov PARAM(%d), rax\t;replace param %s with box" minor v)
+         ^ "\n\tmov rax, sob_void\n"
       | ScmVarSet' (Var' (v, Param minor), expr') ->
         (* raise (X_not_yet_implemented "final project") *)
         let asm_expr = run params env expr' in
@@ -1910,8 +1914,15 @@ module Code_Generation : CODE_GENERATION = struct
       | ScmBoxGet' var' ->
          (run params env (ScmVarGet' var'))
          ^ "\tmov rax, qword [rax]\n"
-      | ScmBoxSet' (var', expr') ->
-         raise (X_not_yet_implemented "final project")
+      | ScmBoxSet' (var', expr') -> 
+         (* raise (X_not_yet_implemented "final project") *)
+        let asm_expr = run params env expr' in
+        let asm_var = (run params env (ScmVarGet' var')) in (* DELETE THIS LATER - MAYBE SCMBOXGET' *)
+        let asm_code = asm_expr
+                      ^ "\n\tpush rax\n"
+                      ^ asm_var
+                      ^ "\n\tpop qword[rax]\n\tmov rax, sob_void\n"
+      in asm_code
       | ScmLambda' (params', Simple, body) ->
          let label_loop_env = make_lambda_simple_loop_env ()
          and label_loop_env_end = make_lambda_simple_loop_env_end ()
