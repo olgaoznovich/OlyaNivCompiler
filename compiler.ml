@@ -618,6 +618,8 @@ module Tag_Parser : TAG_PARSER = struct
     match ribs with
     | ScmPair(ScmPair(ScmSymbol("else"), exprs), ScmNil) ->
       ScmPair(ScmSymbol("begin"), exprs)
+    | ScmPair(ScmPair(ScmSymbol("else"), exprs), ribs) ->
+      raise(X_syntax "malformed cond-ribs")
     | ScmPair(ScmPair(expr, ScmPair(ScmSymbol("=>"), ScmPair(exprf, ScmNil))), ribs) ->
       let rest = macro_expand_cond_ribs ribs in
       let test = ScmSymbol("value") in
@@ -644,7 +646,7 @@ module Tag_Parser : TAG_PARSER = struct
       let dit = ScmPair(ScmSymbol("begin"), exprs) in
       let dif = macro_expand_cond_ribs ribs in
       ScmPair(ScmSymbol("if"), ScmPair(test, ScmPair(dit, ScmPair(dif, ScmNil))))
-    | _ -> raise(X_syntax "malformed cond-ribs");;
+    | _ -> ScmVoid;;
 
   let is_list_of_unique_names =
     let rec run = function
@@ -1881,8 +1883,9 @@ module Code_Generation : CODE_GENERATION = struct
         in asm_code
       | ScmVarSet' (Var' (v, Param minor), ScmBox' _) ->
          (* raise (X_not_yet_implemented "final project") *)
-         ^ "\n\tcall malloc" (* malloc address is in rax*)
-         ^ (Printf.sprintf "\n\tmov [rax], PARAM(%d)\t; box %s" minor v)
+         "\n\tmov rdi, 8\n\tcall malloc" (* malloc address is in rax*)
+         ^ (Printf.sprintf "\n\tmov rbx, PARAM(%d)\t; param %s" minor v)
+         ^ (Printf.sprintf "\n\tmov [rax], rbx\t; box %s" v)
          ^ (Printf.sprintf "\n\tmov PARAM(%d), rax\t;replace param %s with box" minor v)
          ^ "\n\tmov rax, sob_void\n"
       | ScmVarSet' (Var' (v, Param minor), expr') ->
