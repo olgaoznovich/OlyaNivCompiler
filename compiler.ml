@@ -1989,7 +1989,23 @@ module Code_Generation : CODE_GENERATION = struct
       | ScmLambda' (params', Opt opt, body) ->
          raise (X_not_yet_implemented "final project")
       | ScmApplic' (proc, args, Non_Tail_Call) -> 
-         raise (X_not_yet_implemented "final project")
+         (* raise (X_not_yet_implemented "final project") *)
+         let args_code =
+          String.concat ""
+            (List.map
+               (fun arg ->
+                 let arg_code = run params env arg in
+                 arg_code
+                 ^ "\tpush rax\n")
+               (List.rev args))
+          and proc_code = run params env proc
+          in  args_code
+               ^ (Printf.sprintf "\tpush %d\t; arg count\n" (List.length args))
+               ^ proc_code
+               ^ "\tcmp byte [rax], T_closure\n"
+               ^ "\tjne L_error_non_closure\n"
+               ^ "\tpush SOB_CLOSURE_ENV(rax)\n"
+               ^ "\tcall SOB_CLOSURE_CODE(rax)\n"
       | ScmApplic' (proc, args, Tail_Call) -> 
          let args_code =
            String.concat ""
@@ -2036,6 +2052,7 @@ module Code_Generation : CODE_GENERATION = struct
          ^ "\tlea rsp, [rbx + 8 * 1]\n"
          ^ "\tpop rbp\t; the proc will restore it!\n"
          ^ "\tjmp SOB_CLOSURE_CODE(rax)\n"
+         (* match finished here *)
     and runs params env exprs' =
       List.map
         (fun expr' ->
