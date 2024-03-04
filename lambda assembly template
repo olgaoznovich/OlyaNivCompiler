@@ -1,0 +1,80 @@
+// (lambda (a b . c) 2) (n = 2)
+
+closure creation
+
+Lcode:
+-------------------
+ //adjust stack
+ cmp qword [rsp + 8 * 2], (List.length params')=n ; check number of args
+ je (lambda_opt_arity_exact) ; if equal, go to exact arity
+ jgt (lambda_opt_arity_more) ; if greater than, go to arity more
+          ^ "\tpush qword [rsp + 8 * 2]\n" ;else, throw opt erity error
+         ^ (Printf.sprintf "\tpush %d\n" (List.length params'))
+         ^ "\tjmp L_error_incorrect_arity_opt\n"
+ (lambda_opt_arity_exact) :
+// shift all 1*8 down
+mov rax, qword [rsp + 8 * 2] ; number of argument in run time //3
+lea rbx, [rsp + 8 * (2 + rax)] ; rbx hold the address of the last actual woosh woosh
+sub rsp, 8
+lea rcx, [rsp + 8 * 0] ; rcx holds the address of the first actual woosh woosh
+ (lambda_opt_exact_shifting_loop) : //create a new make-label!!!!!!!!!<3
+ mov rdx, [rcx]
+ mov [rcx + 8], rdx
+ add rcx, 8
+ cmp rbx, rcx
+ jne (lambda_opt_exact_shifting_loop)
+ (lambda_opt_exact_shifting_loop_end) :
+// place empty list as (n+1)th argument
+ mov [rbx], SOB_NIL ; place the empty list into the address of the last woosh woosh
+// fix params num to n+1
+ add rax, 1 ; arg count += 1
+ mov qword [rsp + 8 * 2], rax 
+ jmp (lambda_opt_stack_ok)
+ (lambda_opt_arity_more) : 
+ mov rax, qword [rsp + 8 * 2]
+ sub rax, (List.length params' + 1) ; COUNT - (List.length params' + 1)
+ imul rdi, rax, 8 ; [COUNT - (List.length params' + 1)]*8
+ call malloc ; allocated memory for the optional array
+ mov rdx, rax ; array address is in rdx
+ 
+ cmp qword [rsp + 8 * 2], (List.length params' + 1) ; compare count to params
+ je (lambda_opt_loop_end)
+
+ (lambda_opt_loop) : ; shrink loop
+//place last argument in the last place of alloc array
+mov rax, qword [rsp + 8 * 2] ; number of argument in run time //6
+mov rbx, qword [rsp + 8 * (2 + rax)] ; in rbx, the value of the last argument //8
+mov [rdx + 8 * (rax - %d)] , rbx ; rdx = array, array[6-4=2]=8=rbx
+//shifting 1 up to all INCLUDING RSP!!!!!!!<3
+	lea rbx, [rsp + 8 * (2 + rax - 1)] ; in rbx, the address of the one before last (rbx is the inner loop's index!)
+	(lambda_opt_more_shifting_loop) : //create a new make-label!!!!!!!!!<3
+	mov rcx, [rbx] ; in rcx the value of the one before last 
+	mov [rbx + 8], rcx ; put the value of one before last, in last position
+	sub rbx, 8 
+	cmp rsp, rbx
+	jge (lambda_opt_more_shifting_loop)
+	(lambda_opt_shifting_loop_end) :
+	add rsp, 8 ; update rsp
+//update stack params num to - 1
+mov rbx, [rsp + 8 * 2] 
+sub rbx, 1 ; Subtract 1 from the register
+mov [rsp + 8 * 2], rbx ; Store the result back to memory
+//check if stack params num equal to (%d+1) (line 26)
+cmp qword [rsp + 8 * 2], (List.length params' + 1) ;
+jgt (lambda_opt_loop) ; if still greater than, start the loop again
+ (lambda_opt_loop_end) :
+//add last arg to allocated array
+ mov rax, qword [rsp + 8 * 2] ; number of argument in run time //4
+ mov rbx, qword [rsp + 8 * (2 + rax)] ; in rbx, the value of the last argument //3
+ mov [rdx] , rbx ; array[0] = last
+//change the last arg to point to the allocated array
+ mov qword [rsp + 8 * (2 + rax)], rdx
+ 
+ (lambda_opt_stack_ok) :
+-------------------
+ push rbp
+ mov rbp, rsp
+ [body]
+ leave
+ ret
+Lcont:

@@ -1796,6 +1796,18 @@ module Code_Generation : CODE_GENERATION = struct
     make_make_label ".L_lambda_opt_stack_shrink_loop";;
   let make_lambda_opt_loop_exit =
     make_make_label ".L_lambda_opt_stack_shrink_loop_exit";;
+    (* START OF OUR CUSTOM LABELS *)
+  let make_lambda_opt_exact_shifting_loop =
+    make_make_label ".L_lambda_opt_exact_shifting_loop";;
+  let make_lambda_opt_exact_shifting_loop_end =
+    make_make_label ".L_lambda_opt_exact_shifting_loop_end";;
+  let make_lambda_opt_more_shifting_loop =
+    make_make_label ".L_lambda_opt_more_shifting_loop";;
+  let make_lambda_opt_more_shifting_loop_end =
+    make_make_label ".L_lambda_opt_more_shifting_loop_end";;
+    
+
+    (* END OF OUR CUSTOM LABELS *)
   let make_tc_applic_recycle_frame_loop =
     make_make_label ".L_tc_recycle_frame_loop";;
   let make_tc_applic_recycle_frame_done =
@@ -1987,7 +1999,68 @@ module Code_Generation : CODE_GENERATION = struct
          ^ (Printf.sprintf "\tret AND_KILL_FRAME(%d)\n" (List.length params'))
          ^ (Printf.sprintf "%s:\t; new closure is in rax\n" label_end)
       | ScmLambda' (params', Opt opt, body) ->
-         raise (X_not_yet_implemented "final project")
+         (* raise (X_not_yet_implemented "final project") *)
+         let label_loop_env = make_lambda_opt_loop_env ()
+         and label_loop_env_end = make_lambda_opt_loop_env_end ()
+         and label_loop_params = make_lambda_opt_loop_params ()
+         and label_loop_params_end = make_lambda_opt_loop_params_end ()
+         and label_code = make_lambda_opt_code ()
+         and label_arity_ok = make_lambda_opt_end ()
+         and label_end = make_lambda_opt_end ()
+         in
+         "\tmov rdi, (1 + 8 + 8)\t; sob closure\n"
+         ^ "\tcall malloc\n"
+         ^ "\tpush rax\n"
+         ^ (Printf.sprintf "\tmov rdi, 8 * %d\t; new rib\n" params)
+         ^ "\tcall malloc\n"
+         ^ "\tpush rax\n"
+         ^ (Printf.sprintf "\tmov rdi, 8 * %d\t; extended env\n" (env + 1))
+         ^ "\tcall malloc\n"
+         ^ "\tmov rdi, ENV\n"
+         ^ "\tmov rsi, 0\n"
+         ^ "\tmov rdx, 1\n"
+         ^ (Printf.sprintf "%s:\t; ext_env[i + 1] <-- env[i]\n"
+              label_loop_env)
+         ^ (Printf.sprintf "\tcmp rsi, %d\n" env)
+         ^ (Printf.sprintf "\tje %s\n" label_loop_env_end)
+         ^ "\tmov rcx, qword [rdi + 8 * rsi]\n"
+         ^ "\tmov qword [rax + 8 * rdx], rcx\n"
+         ^ "\tinc rsi\n"
+         ^ "\tinc rdx\n"
+         ^ (Printf.sprintf "\tjmp %s\n" label_loop_env)
+         ^ (Printf.sprintf "%s:\n" label_loop_env_end)
+         ^ "\tpop rbx\n"
+         ^ "\tmov rsi, 0\n"
+         ^ (Printf.sprintf "%s:\t; copy params\n" label_loop_params)
+         ^ (Printf.sprintf "\tcmp rsi, %d\n" params)
+         ^ (Printf.sprintf "\tje %s\n" label_loop_params_end)
+         ^ "\tmov rdx, qword [rbp + 8 * rsi + 8 * 4]\n"
+         ^ "\tmov qword [rbx + 8 * rsi], rdx\n"
+         ^ "\tinc rsi\n"
+         ^ (Printf.sprintf "\tjmp %s\n" label_loop_params)
+         ^ (Printf.sprintf "%s:\n" label_loop_params_end)
+         ^ "\tmov qword [rax], rbx\t; ext_env[0] <-- new_rib \n"
+         ^ "\tmov rbx, rax\n"
+         ^ "\tpop rax\n"
+         ^ "\tmov byte [rax], T_closure\n"
+         ^ "\tmov SOB_CLOSURE_ENV(rax), rbx\n"
+         ^ (Printf.sprintf "\tmov SOB_CLOSURE_CODE(rax), %s\n" label_code)
+         ^ (Printf.sprintf "\tjmp %s\n" label_end)
+         ^ (Printf.sprintf "%s:\t; lambda-simple body\n" label_code)
+         (* OUR CODE HERE *)
+         ^ (Printf.sprintf "\tcmp qword [rsp + 8 * 2], %d\n"
+              (List.length params'))
+         ^ (Printf.sprintf "\tje %s\n" label_arity_ok)
+         ^ "\tpush qword [rsp + 8 * 2]\n"
+         ^ (Printf.sprintf "\tpush %d\n" (List.length params'))
+         ^ "\tjmp L_error_incorrect_arity_simple\n"
+         ^ (Printf.sprintf "%s:\n" label_arity_ok)
+         ^ "\tenter 0, 0\n"
+         ^ (run (List.length params') (env + 1) body)
+         ^ "\tleave\n"
+         ^ (Printf.sprintf "\tret AND_KILL_FRAME(%d)\n" (List.length params'))
+         ^ (Printf.sprintf "%s:\t; new closure is in rax\n" label_end)
+
       | ScmApplic' (proc, args, Non_Tail_Call) -> 
          (* raise (X_not_yet_implemented "final project") *)
          let args_code =
