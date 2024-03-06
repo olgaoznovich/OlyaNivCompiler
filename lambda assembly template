@@ -31,20 +31,22 @@ lea rcx, [rsp + 8 * 0] ; rcx holds the address of the first actual woosh woosh
  mov qword [rsp + 8 * 2], rax 
  jmp (lambda_opt_stack_ok)
  (lambda_opt_arity_more) : 
- mov rax, qword [rsp + 8 * 2]
- sub rax, (List.length params' + 1) ; COUNT - (List.length params' + 1)
- imul rdi, rax, 8 ; [COUNT - (List.length params' + 1)]*8
- call malloc ; allocated memory for the optional array
- mov rdx, rax ; array address is in rdx
- 
+
+ mov rdx, SOB_NIL ; () is the base cdr for the list
  cmp qword [rsp + 8 * 2], (List.length params' + 1) ; compare count to params
  je (lambda_opt_loop_end)
 
  (lambda_opt_loop) : ; shrink loop
+ // create pair for current last
+ mov rdi, (1 + 8 + 8) ; SOB PAIR
+ call malloc ; allocated memory for the optional scheme list
+ mov byte[rax], T_pair ; set type pair
+ mov [rax + 1 + 8], rdx ; set the cdr to the to curr cdr
+ mov rdx, rax ; list address is in rdx
 //place last argument in the last place of alloc array
 mov rax, qword [rsp + 8 * 2] ; number of argument in run time //6
 mov rbx, qword [rsp + 8 * (2 + rax)] ; in rbx, the value of the last argument //8
-mov [rdx + 8 * (rax - %d)] , rbx ; rdx = array, array[6-4=2]=8=rbx
+mov [rdx + 1] , rbx ; place the value in the car of the pair
 //shifting 1 up to all INCLUDING RSP!!!!!!!<3
 	lea rbx, [rsp + 8 * (2 + rax - 1)] ; in rbx, the address of the one before last (rbx is the inner loop's index!)
 	(lambda_opt_more_shifting_loop) : //create a new make-label!!!!!!!!!<3
@@ -64,11 +66,15 @@ cmp qword [rsp + 8 * 2], (List.length params' + 1) ;
 jgt (lambda_opt_loop) ; if still greater than, start the loop again
  (lambda_opt_loop_end) :
 //add last arg to allocated array
- mov rax, qword [rsp + 8 * 2] ; number of argument in run time //4
- mov rbx, qword [rsp + 8 * (2 + rax)] ; in rbx, the value of the last argument //3
- mov [rdx] , rbx ; array[0] = last
+ mov rcx, qword [rsp + 8 * 2] ; number of argument in run time //4
+ mov rbx, qword [rsp + 8 * (2 + rcx)] ; in rbx, the value of the last argument //3
+ mov rdi, (1 + 8 + 8) ; SOB PAIR
+ call malloc ; allocated memory for the optional scheme list
+ mov byte[rax], T_pair ; set type pair
+ mov [rax + 1 + 8], rdx ; set the cdr to the to curr cdr
+ mov [rax + 1] , rbx ; 
 //change the last arg to point to the allocated array
- mov qword [rsp + 8 * (2 + rax)], rdx
+ mov qword [rsp + 8 * (2 + rcx)], rax
  
  (lambda_opt_stack_ok) :
 -------------------

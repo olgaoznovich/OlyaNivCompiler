@@ -1813,7 +1813,6 @@ module Code_Generation : CODE_GENERATION = struct
   let make_tc_applic_recycle_frame_done =
     make_make_label ".L_tc_recycle_frame_done";;
 
-(*DELETE THIS LATER - TESTING PURPOSES ONLY*)
     let rec print_string_pairs lst =
       match lst with
       | [] -> ()  (* Base case: empty list, do nothing *)
@@ -1825,7 +1824,6 @@ module Code_Generation : CODE_GENERATION = struct
   let code_gen exprs' =
     let consts = make_constants_table exprs' in
     let free_vars = make_free_vars_table exprs' in
-    print_string_pairs free_vars ; (*DELETE THIS LATER - TESTING PURPOSES ONLY*)
     let rec run params env = function
       | ScmConst' sexpr ->
          let addr = search_constant_address sexpr consts in
@@ -1853,7 +1851,7 @@ module Code_Generation : CODE_GENERATION = struct
          let asm_test = run params env test in
          let asm_dit = run params env dit in
          let asm_dif = run params env dif in
-         let asm_code = asm_test ^ "\n\tcmp rax, sob_false\n" ^ (Printf.sprintf "\tje %s\n" label_lelse)
+         let asm_code = asm_test ^ "\n\tcmp rax, sob_boolean_false\n" ^ (Printf.sprintf "\tje %s\n" label_lelse)
                       ^ asm_dit ^ (Printf.sprintf "\n\tjmp %s\n" label_lexit) 
                       ^ (Printf.sprintf "\n\t%s:\n" label_lelse) ^ asm_dif 
                       ^ (Printf.sprintf "\n\t%s:\n" label_lexit)
@@ -2005,7 +2003,15 @@ module Code_Generation : CODE_GENERATION = struct
          and label_loop_params = make_lambda_opt_loop_params ()
          and label_loop_params_end = make_lambda_opt_loop_params_end ()
          and label_code = make_lambda_opt_code ()
-         and label_arity_ok = make_lambda_opt_end ()
+         and label_arity_exact = make_lambda_opt_arity_exact ()
+         and label_arity_more = make_lambda_opt_arity_more ()
+         and label_stack_ok = make_lambda_opt_stack_ok ()
+         and label_shrink_loop = make_lambda_opt_loop ()
+         and label_shrink_loop_end = make_lambda_opt_loop_exit ()
+         and label_exact_shifting_loop = make_lambda_opt_exact_shifting_loop ()
+         and label_exact_shifting_loop_end = make_lambda_opt_exact_shifting_loop_end ()
+         and label_more_shifting_loop = make_lambda_opt_more_shifting_loop ()
+         and label_more_shifting_loop_end = make_lambda_opt_more_shifting_loop_end ()
          and label_end = make_lambda_opt_end ()
          in
          "\tmov rdi, (1 + 8 + 8)\t; sob closure\n"
@@ -2047,18 +2053,81 @@ module Code_Generation : CODE_GENERATION = struct
          ^ (Printf.sprintf "\tmov SOB_CLOSURE_CODE(rax), %s\n" label_code)
          ^ (Printf.sprintf "\tjmp %s\n" label_end)
          ^ (Printf.sprintf "%s:\t; lambda-simple body\n" label_code)
-         (* OUR CODE HERE *)
-         ^ (Printf.sprintf "\tcmp qword [rsp + 8 * 2], %d\n"
-              (List.length params'))
-         ^ (Printf.sprintf "\tje %s\n" label_arity_ok)
-         ^ "\tpush qword [rsp + 8 * 2]\n"
+         (* OUR CODE HERE - STACK ADJUSTMENT*)
+         ^ (Printf.sprintf "\tcmp qword [rsp + 8 * 2], %d ;\t check num of args\n" (List.length params'))
+         ^ (Printf.sprintf "\tje %s ;\t if equal, go to exact arity\n" label_arity_exact)
+         ^ (Printf.sprintf "\tjg %s ;\t if greater than, go to arity more\n" label_arity_more)         
+         ^ "\tpush qword [rsp + 8 * 2] ;\t else, throw opt erity error\n "
          ^ (Printf.sprintf "\tpush %d\n" (List.length params'))
-         ^ "\tjmp L_error_incorrect_arity_simple\n"
-         ^ (Printf.sprintf "%s:\n" label_arity_ok)
+         ^ "\tjmp L_error_incorrect_arity_opt\n"
+         ^ (Printf.sprintf "\t%s:\n" label_arity_exact)
+         (* shift all 1*8 down *)
+         ^ ("\tmov rax, qword [rsp + 8 * 2] ;\t number of argument in run time\n")
+         ^ "\tlea rbx, [rsp + 8 * (2 + rax)] ;\t rbx holds address of last element\n"
+         ^ "\tsub rsp, 8\n"
+         ^ "\tlea rcx, [rsp + 8 * 0] ;\t rcx holds address of first element\n"
+         ^ (Printf.sprintf "\t%s:\n" label_exact_shifting_loop)
+         ^ "\tmov rdx, [rcx]\n"
+         ^ "\tmov [rcx + 8], rdx\n"
+         ^ "\tadd rcx, 8\n"
+         ^ "\tcmp rbx, rcx\n"
+         ^ (Printf.sprintf "\tjne %s\n" label_exact_shifting_loop)
+         ^ (Printf.sprintf "\t%s:\n" label_exact_shifting_loop_end)
+         (*place empty list as (n+1)th argument*)
+         ^ "\tmov qword[rbx], sob_nil ;\t place nil into address of last slot\n"
+         (*fix params num to n+1*)
+         ^ "\tadd rax, 1 ; \targ count += 1\n"
+         ^ "\tmov qword [rsp + 8 * 2], rax\n"
+         ^ (Printf.sprintf "\tjmp %s\n" label_stack_ok)
+         ^ (Printf.sprintf "\t%s:\n" label_arity_more)
+         ^ "\tmov rdx, sob_nil ;\t () is the base cdr for the list\n"
+         ^ (Printf.sprintf "\tcmp qword [rsp + 8 * 2], %d;\t compare count to params\n" ((List.length params') + 1))
+         ^ (Printf.sprintf "\tje %s\n" label_shrink_loop_end)
+         ^ (Printf.sprintf "\t%s:\n" label_shrink_loop)
+         (* create pair for current last *)
+         ^ "\tmov rdi, (1 + 8 + 8) ;\t SOB PAIR\n"
+         ^ "\tcall malloc ;\t allocated memory for the optional scheme list\n"
+         ^ "\tmov byte[rax], T_pair ;\t set type pair\n"
+         ^ "\tmov [rax + 1 + 8], rdx ;\t set the cdr to the to curr cdr\n"
+         ^ "\t mov rdx, rax ;\t list address is in rdx\n"
+         (* place last argument in car of pair *)
+         ^ "\tmov rax, qword [rsp + 8 * 2] ;\t number of argument in run time \n"
+         ^ "\tmov rbx, qword [rsp + 8 * (2 + rax)] ;\t in rbx, the value of the last argument\n "
+         ^ "\tmov [rdx + 1] , rbx ;\t place the value in the car of the pair\n"
+         (*shifting 1 up to all INCLUDING RSP*)
+         ^ "\tlea rbx, [rsp + 8 * (2 + rax - 1)] ;\t in rbx, the address of the one before last (rbx is the inner loop's index!)\n"
+         ^ (Printf.sprintf "\t%s:\n" label_more_shifting_loop)
+         ^ "\tmov rcx, [rbx] ;\t in rcx the value of the one before last\n"
+         ^ "\tmov [rbx + 8], rcx ;\t put the value of one before last, in last position\n"
+         ^ "\tsub rbx, 8 \n"
+         ^ "\tcmp rsp, rbx\n"
+         ^ (Printf.sprintf "\tjge %s\n" label_more_shifting_loop)
+         ^ (Printf.sprintf "\t%s:\n" label_more_shifting_loop_end)
+         ^ "\tadd rsp, 8 ;\t update rsp\n"
+         (*update stack params num to - 1*)
+         ^ "\tmov rbx, [rsp + 8 * 2]\n"
+         ^ "\tsub rbx, 1 ;\t Subtract 1 from the register\n"
+         ^ "\tmov [rsp + 8 * 2], rbx ;\t Store the result back to memory\n"
+         (*check if stack params num equal to (%d+1) *)
+         ^ (Printf.sprintf "\tcmp qword [rsp + 8 * 2], %d\n" (List.length params' + 1))
+         ^ (Printf.sprintf "\tjg %s\n" label_shrink_loop)
+         ^ (Printf.sprintf "\t%s:\n" label_shrink_loop_end)
+         (*add last arg to allocated pair*)
+         ^ "\tmov rcx, qword [rsp + 8 * 2] ;\t number of argument in run time\n"
+         ^ "\tmov rbx, qword [rsp + 8 * (2 + rcx)] ;\t in rbx, the value of the last argument\n"
+         ^ "\tmov rdi, (1 + 8 + 8) ;\t SOB PAIR\n"
+         ^ "\tcall malloc ;\t allocated memory for the optional scheme list\n"
+         ^ "\tmov byte[rax], T_pair ;\t set type pair\n"
+         ^ "\tmov [rax + 1 + 8], rdx ;\t set the cdr to the to curr cdr\n"
+         ^ "\tmov [rax + 1] , rbx\n"
+         (*change the last arg to point to the pair*)
+         ^ "\tmov qword [rsp + 8 * (2 + rcx)], rax\n"
+         ^ (Printf.sprintf "\t%s:\n" label_stack_ok)
+         (* OUR CODE ENDS HERE *)
          ^ "\tenter 0, 0\n"
-         ^ (run (List.length params') (env + 1) body)
+         ^ (run ((List.length params') + 1) (env + 1) body)
          ^ "\tleave\n"
-         ^ (Printf.sprintf "\tret AND_KILL_FRAME(%d)\n" (List.length params'))
+         ^ (Printf.sprintf "\tret AND_KILL_FRAME(%d)\n" ((List.length params') + 1))
          ^ (Printf.sprintf "%s:\t; new closure is in rax\n" label_end)
 
       | ScmApplic' (proc, args, Non_Tail_Call) -> 
@@ -2150,8 +2219,9 @@ module Code_Generation : CODE_GENERATION = struct
     code;;
 
   let compile_scheme_string file_out user =
-    let init = file_to_string "init.scm" in
-    let source_code = init ^ user in
+    (* let init = file_to_string "init.scm" in *)
+    (* let source_code = init ^ user in *)
+    let source_code = user in
     let sexprs = (PC.star Reader.nt_sexpr source_code 0).found in
     let exprs = List.map Tag_Parser.tag_parse sexprs in
     let exprs' = List.map Semantic_Analysis.semantics exprs in
@@ -2163,8 +2233,9 @@ module Code_Generation : CODE_GENERATION = struct
     compile_scheme_string file_out (file_to_string file_in);;
 
   let compile_and_run_scheme_string file_out_base user =
-    let init = file_to_string "init.scm" in
-    let source_code = init ^ user in
+    (* let init = file_to_string "init.scm" in *)
+    (* let source_code = init ^ user in *)
+    let source_code = user in 
     let sexprs = (PC.star Reader.nt_sexpr source_code 0).found in
     let exprs = List.map Tag_Parser.tag_parse sexprs in
     let exprs' = List.map Semantic_Analysis.semantics exprs in
