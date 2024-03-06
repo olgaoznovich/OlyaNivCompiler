@@ -2067,8 +2067,8 @@ module Code_Generation : CODE_GENERATION = struct
          ^ "\tsub rsp, 8\n"
          ^ "\tlea rcx, [rsp + 8 * 0] ;\t rcx holds address of first element\n"
          ^ (Printf.sprintf "\t%s:\n" label_exact_shifting_loop)
-         ^ "\tmov rdx, [rcx]\n"
-         ^ "\tmov [rcx + 8], rdx\n"
+         ^ "\tmov rdx, [rcx + 8]\n"
+         ^ "\tmov [rcx], rdx\n"
          ^ "\tadd rcx, 8\n"
          ^ "\tcmp rbx, rcx\n"
          ^ (Printf.sprintf "\tjne %s\n" label_exact_shifting_loop)
@@ -2088,12 +2088,12 @@ module Code_Generation : CODE_GENERATION = struct
          ^ "\tmov rdi, (1 + 8 + 8) ;\t SOB PAIR\n"
          ^ "\tcall malloc ;\t allocated memory for the optional scheme list\n"
          ^ "\tmov byte[rax], T_pair ;\t set type pair\n"
-         ^ "\tmov [rax + 1 + 8], rdx ;\t set the cdr to the to curr cdr\n"
+         ^ "\tmov SOB_PAIR_CDR(rax), rdx ;\t set the cdr to the to curr cdr\n"
          ^ "\t mov rdx, rax ;\t list address is in rdx\n"
          (* place last argument in car of pair *)
          ^ "\tmov rax, qword [rsp + 8 * 2] ;\t number of argument in run time \n"
          ^ "\tmov rbx, qword [rsp + 8 * (2 + rax)] ;\t in rbx, the value of the last argument\n "
-         ^ "\tmov [rdx + 1] , rbx ;\t place the value in the car of the pair\n"
+         ^ "\tmov SOB_PAIR_CAR(rdx) , rbx ;\t place the value in the car of the pair\n"
          (*shifting 1 up to all INCLUDING RSP*)
          ^ "\tlea rbx, [rsp + 8 * (2 + rax - 1)] ;\t in rbx, the address of the one before last (rbx is the inner loop's index!)\n"
          ^ (Printf.sprintf "\t%s:\n" label_more_shifting_loop)
@@ -2101,7 +2101,7 @@ module Code_Generation : CODE_GENERATION = struct
          ^ "\tmov [rbx + 8], rcx ;\t put the value of one before last, in last position\n"
          ^ "\tsub rbx, 8 \n"
          ^ "\tcmp rsp, rbx\n"
-         ^ (Printf.sprintf "\tjge %s\n" label_more_shifting_loop)
+         ^ (Printf.sprintf "\tjle %s\n" label_more_shifting_loop)
          ^ (Printf.sprintf "\t%s:\n" label_more_shifting_loop_end)
          ^ "\tadd rsp, 8 ;\t update rsp\n"
          (*update stack params num to - 1*)
@@ -2118,8 +2118,8 @@ module Code_Generation : CODE_GENERATION = struct
          ^ "\tmov rdi, (1 + 8 + 8) ;\t SOB PAIR\n"
          ^ "\tcall malloc ;\t allocated memory for the optional scheme list\n"
          ^ "\tmov byte[rax], T_pair ;\t set type pair\n"
-         ^ "\tmov [rax + 1 + 8], rdx ;\t set the cdr to the to curr cdr\n"
-         ^ "\tmov [rax + 1] , rbx\n"
+         ^ "\tmov SOB_PAIR_CDR(rax), rdx ;\t set the cdr to the to curr cdr\n"
+         ^ "\tmov SOB_PAIR_CAR(rax) , rbx\n"
          (*change the last arg to point to the pair*)
          ^ "\tmov qword [rsp + 8 * (2 + rcx)], rax\n"
          ^ (Printf.sprintf "\t%s:\n" label_stack_ok)
@@ -2219,9 +2219,9 @@ module Code_Generation : CODE_GENERATION = struct
     code;;
 
   let compile_scheme_string file_out user =
-    (* let init = file_to_string "init.scm" in *)
-    (* let source_code = init ^ user in *)
-    let source_code = user in
+    let init = file_to_string "init.scm" in
+    let source_code = init ^ "\n" ^ user in
+    (* let source_code = user in *)
     let sexprs = (PC.star Reader.nt_sexpr source_code 0).found in
     let exprs = List.map Tag_Parser.tag_parse sexprs in
     let exprs' = List.map Semantic_Analysis.semantics exprs in
@@ -2233,9 +2233,9 @@ module Code_Generation : CODE_GENERATION = struct
     compile_scheme_string file_out (file_to_string file_in);;
 
   let compile_and_run_scheme_string file_out_base user =
-    (* let init = file_to_string "init.scm" in *)
-    (* let source_code = init ^ user in *)
-    let source_code = user in 
+    let init = file_to_string "init.scm" in
+    let source_code = init ^ "\n" ^ user in
+    (* let source_code = user in  *)
     let sexprs = (PC.star Reader.nt_sexpr source_code 0).found in
     let exprs = List.map Tag_Parser.tag_parse sexprs in
     let exprs' = List.map Semantic_Analysis.semantics exprs in
