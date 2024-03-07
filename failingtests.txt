@@ -1,0 +1,15 @@
+const: V
+seq:
+{test = "(begin 'a 'b 'c)"; expected = "c"}; => segmantation fault
+if and and: V
+or: V
+define-set-get: V
+applic non-tail-call non-opt: V
+lambda opt: v
+tail-call: V
+_bin-apply: V
+elias's test: 
+{test = "(car '(a))"; expected = "a"}; => segmantation fault
+
+
+
