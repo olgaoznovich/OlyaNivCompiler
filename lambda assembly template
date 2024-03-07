@@ -18,8 +18,8 @@ lea rbx, [rsp + 8 * (2 + rax)] ; rbx hold the address of the last actual woosh w
 sub rsp, 8
 lea rcx, [rsp + 8 * 0] ; rcx holds the address of the first actual woosh woosh
  (lambda_opt_exact_shifting_loop) : //create a new make-label!!!!!!!!!<3
- mov rdx, [rcx]
- mov [rcx + 8], rdx
+ mov rdx, [rcx + 8]
+ mov [rcx], rdx
  add rcx, 8
  cmp rbx, rcx
  jne (lambda_opt_exact_shifting_loop)
@@ -43,7 +43,7 @@ lea rcx, [rsp + 8 * 0] ; rcx holds the address of the first actual woosh woosh
  mov byte[rax], T_pair ; set type pair
  mov [rax + 1 + 8], rdx ; set the cdr to the to curr cdr
  mov rdx, rax ; list address is in rdx
-//place last argument in the last place of alloc array
+//place last argument in car of pair
 mov rax, qword [rsp + 8 * 2] ; number of argument in run time //6
 mov rbx, qword [rsp + 8 * (2 + rax)] ; in rbx, the value of the last argument //8
 mov [rdx + 1] , rbx ; place the value in the car of the pair
@@ -54,7 +54,7 @@ mov [rdx + 1] , rbx ; place the value in the car of the pair
 	mov [rbx + 8], rcx ; put the value of one before last, in last position
 	sub rbx, 8 
 	cmp rsp, rbx
-	jge (lambda_opt_more_shifting_loop)
+	jle (lambda_opt_more_shifting_loop)
 	(lambda_opt_shifting_loop_end) :
 	add rsp, 8 ; update rsp
 //update stack params num to - 1
@@ -65,7 +65,7 @@ mov [rsp + 8 * 2], rbx ; Store the result back to memory
 cmp qword [rsp + 8 * 2], (List.length params' + 1) ;
 jgt (lambda_opt_loop) ; if still greater than, start the loop again
  (lambda_opt_loop_end) :
-//add last arg to allocated array
+//add last arg to allocated list
  mov rcx, qword [rsp + 8 * 2] ; number of argument in run time //4
  mov rbx, qword [rsp + 8 * (2 + rcx)] ; in rbx, the value of the last argument //3
  mov rdi, (1 + 8 + 8) ; SOB PAIR
@@ -73,7 +73,7 @@ jgt (lambda_opt_loop) ; if still greater than, start the loop again
  mov byte[rax], T_pair ; set type pair
  mov [rax + 1 + 8], rdx ; set the cdr to the to curr cdr
  mov [rax + 1] , rbx ; 
-//change the last arg to point to the allocated array
+//change the last arg to point to the pair
  mov qword [rsp + 8 * (2 + rcx)], rax
  
  (lambda_opt_stack_ok) :
